@@ -8,7 +8,7 @@ Seasonal influenza viruses evade host immunity through rapid antigenic evolution
 - Training: Scripts used for PLANT training
 - Results: Results shown in the PLANT paper.
 - Acknowledgement table: GISAID Acknowledgement table
-- Comprehensive antigenic map is here. [Interactive plot here](https://github.com/TheSatoLab/PLANT/comprehensive_antigenic_maps/PLANT_all_HA.html)
+- [Comprehensive antigenic map is here] (https://thesatolab.github.io/PLANT/comprehensive_antigenic_maps/PLANT_all_HA.html)
 
 
 ## Citation
