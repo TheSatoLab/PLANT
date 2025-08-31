@@ -4,12 +4,21 @@ Protein Language Model for Antigenic cartography
 ## Summary
 Seasonal influenza viruses evade host immunity through rapid antigenic evolution. Antigenicity is assessed by serological assays and typically visualized as antigenic maps, which represent antigenic differences among virus strains. However, conventional maps cannot directly infer the antigenicity of unexamined strains from their genotypes. Here, we present PLANT, a protein language model that projects influenza A/H3N2 viruses onto an antigenic map using HA protein sequences.
 
-## Contents
-- Training: Scripts used for PLANT training
-- Results: Results shown in the PLANT paper.
-- Acknowledgement table: GISAID Acknowledgement table
-- [Comprehensive antigenic map is here](https://thesatolab.github.io/PLANT/comprehensive_antigenic_maps/PLANT_all_HA.html)
+## Trained model
+The PLANT model, trained on data up to the 2024 Southern Hemisphere season (full model), is available on the Hugging Face repository:  
+**TheSatoLab-UTokyo/PLANT**
 
+## Google Colab notebook
+A Colab notebook for embedding your sequences of interest onto the antigenic map constructed by the full model is available at the following link:  
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1sLE3ysElImtxBBIzlGHlFTdDo8_O5aoY?usp=sharing)
+
+## Contents
+- **training/**: Scripts used for PLANT training  
+- **papers_results/**: Results shown in the PLANT paper  
+- **src/plant/**: Simple module for PLANT inference  
+- **examples/**: Example data used in the Colab notebook  
+- **Acknowledgement_table/**: GISAID acknowledgement table  
+- [Comprehensive antigenic map](https://thesatolab.github.io/PLANT/comprehensive_antigenic_maps/PLANT_all_HA.html)
 
 ## Citation
 Integrative modeling of seasonal influenza evolution via AI-powered antigenic cartography
