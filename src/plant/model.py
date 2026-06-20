@@ -53,7 +53,7 @@ class semanticESM(PreTrainedModel):
     During training, examples with ``labels == -10`` are treated as virus-only
     examples and contribute only to the semantic regularization loss.  Examples
     with real labels contribute to the supervised antigenic-distance loss plus
-    the semantic and local/global regularizers.
+    semantic and variance-floor regularizers.
     """
 
     config_class = EsmConfig
@@ -77,7 +77,10 @@ class semanticESM(PreTrainedModel):
         CSE_W_VIRUS_ONLY: float = 0.0,
         SEMANTIC_W_VIRUS_ONLY: float = 0.2,
         CART_W: float = 0.05,
-        LG_W: float = 0.01,
+        LG_W: float = 0.0,
+        VAR_W: float = 0.005,
+        VAR_W_VIRUS_ONLY: float = 0.005,
+        VAR_GAMMA: float = 0.3,
         missing_label_value: float = MISSING_LABEL_VALUE,
         use_lora: bool = True, #False,
         lora_r: int = 16,
@@ -162,6 +165,9 @@ class semanticESM(PreTrainedModel):
         self.CSE_W_VIRUS_ONLY = CSE_W_VIRUS_ONLY
         self.SEMANTIC_W_VIRUS_ONLY = SEMANTIC_W_VIRUS_ONLY
         self.LG_W = LG_W
+        self.VAR_W = VAR_W
+        self.VAR_W_VIRUS_ONLY = VAR_W_VIRUS_ONLY
+        self.VAR_GAMMA = VAR_GAMMA
         self.embed_scale_factor = float(embed_scale_factor)
         self.missing_label_value = float(missing_label_value)
 
@@ -342,6 +348,29 @@ class semanticESM(PreTrainedModel):
         global_loss = torch.sum(repel_loss * margin_mask) / (margin_mask.sum() + 1e-8)
         return local_loss + global_loss
 
+    def variance_floor_loss(
+        self,
+        latents: torch.Tensor,
+        gamma: float = 0.3,
+        eps: float = 1e-4,
+    ) -> torch.Tensor:
+        """Prevent latent-space collapse with a weak per-dimension variance floor.
+
+        This loss penalizes only dimensions whose batch standard deviation falls
+        below ``gamma``.  It does not push already well-spread coordinates apart,
+        making it a gentler replacement for local/global repulsion on the 3D
+        antigenic map.
+        """
+        if latents.size(0) < 2:
+            return torch.tensor(0.0, device=latents.device)
+
+        # Compute the statistic in fp32 for numerical stability under fp16/bf16
+        # mixed-precision training, while preserving gradients to the original
+        # latent tensor.
+        latents_fp32 = latents.float()
+        std = torch.sqrt(latents_fp32.var(dim=0, unbiased=False) + eps)
+        return torch.mean(torch.relu(float(gamma) - std) ** 2)
+
     def custom_loss(
         self,
         predictions: torch.Tensor,
@@ -381,9 +410,18 @@ class semanticESM(PreTrainedModel):
         contrastive_loss_value = self.contrastive_loss_semantic(
             combined_latents, combined_latents2, alpha=self.CSE_ALPHA
         )
-        local_global_loss_value = self.local_global_loss(
-            combined_latents, k_local=3, margin_global=0.125
-        )
+        if self.LG_W != 0.0:
+            local_global_loss_value = self.local_global_loss(
+                combined_latents, k_local=3, margin_global=0.125
+            )
+        else:
+            local_global_loss_value = torch.tensor(0.0, device=combined_latents.device)
+        if self.VAR_W != 0.0:
+            variance_loss_value = self.variance_floor_loss(
+                combined_latents, gamma=self.VAR_GAMMA
+            )
+        else:
+            variance_loss_value = torch.tensor(0.0, device=combined_latents.device)
         semantic_loss = self.compute_semantic_loss(
             combined_latents,
             combined_latents_original,
@@ -399,6 +437,7 @@ class semanticESM(PreTrainedModel):
             + contrastive_loss_value * self.CSE_W
             + semantic_loss * self.SEMANTIC_W
             + local_global_loss_value * self.LG_W
+            + variance_loss_value * self.VAR_W
         )
 
     def custom_loss_only_semantic(
@@ -410,9 +449,18 @@ class semanticESM(PreTrainedModel):
         contrastive_loss_value = self.contrastive_loss_semantic(
             virus_regressor_out, virus_regressor_out2, alpha=self.CSE_ALPHA
         )
-        local_global_loss_value = self.local_global_loss(
-            virus_regressor_out, k_local=3, margin_global=0.125
-        )
+        if self.LG_W != 0.0:
+            local_global_loss_value = self.local_global_loss(
+                virus_regressor_out, k_local=3, margin_global=0.125
+            )
+        else:
+            local_global_loss_value = torch.tensor(0.0, device=virus_regressor_out.device)
+        if self.VAR_W_VIRUS_ONLY != 0.0:
+            variance_loss_value = self.variance_floor_loss(
+                virus_regressor_out, gamma=self.VAR_GAMMA
+            )
+        else:
+            variance_loss_value = torch.tensor(0.0, device=virus_regressor_out.device)
         semantic_loss = self.compute_semantic_loss(
             virus_regressor_out,
             virus_embedding_original,
@@ -423,7 +471,9 @@ class semanticESM(PreTrainedModel):
             semantic_loss * self.SEMANTIC_W_VIRUS_ONLY
             + contrastive_loss_value * self.CSE_W_VIRUS_ONLY
             + local_global_loss_value * self.LG_W
+            + variance_loss_value * self.VAR_W_VIRUS_ONLY
         )
+
 
     @classmethod
     def from_pretrained(
